@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ImmichMCP.Auth;
 using ImmichMCP.Client;
 using ImmichMCP.Configuration;
 using ImmichMCP.Services;
@@ -48,6 +49,61 @@ else
 
     var port = app.Configuration.GetValue<int?>("Mcp:Port")
                ?? (Environment.GetEnvironmentVariable("MCP_PORT") is string portStr && int.TryParse(portStr, out var p) ? p : 5000);
+
+    app.UseMiddleware<OidcAuthMiddleware>();
+
+    app.MapGet("/.well-known/oauth-protected-resource", (IOptions<OidcOptions> oidcOptions, HttpRequest request) =>
+    {
+        var options = oidcOptions.Value;
+        var resource = !string.IsNullOrEmpty(options.PublicUrl) ? options.PublicUrl : $"{request.Scheme}://{request.Host}";
+
+        return Results.Json(new
+        {
+            resource,
+            authorization_servers = string.IsNullOrEmpty(options.Issuer) ? Array.Empty<string>() : new[] { options.Issuer },
+            bearer_methods_supported = new[] { "header" },
+            scopes_supported = new[] { "openid", "profile", "email" }
+        });
+    });
+
+    app.MapGet("/.well-known/oauth-authorization-server", async (
+        IOptions<OidcOptions> oidcOptions,
+        IHttpClientFactory httpClientFactory,
+        ILogger<Program> logger) =>
+    {
+        var options = oidcOptions.Value;
+
+        if (!string.IsNullOrEmpty(options.Issuer))
+        {
+            try
+            {
+                using var client = httpClientFactory.CreateClient();
+                var upstream = await client.GetAsync($"{options.Issuer.TrimEnd('/')}/.well-known/oauth-authorization-server");
+                if (upstream.IsSuccessStatusCode)
+                {
+                    var body = await upstream.Content.ReadAsStringAsync();
+                    return Results.Content(body, "application/json");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[discovery] failed to fetch upstream OAuth discovery document from issuer");
+            }
+        }
+
+        return Results.Json(new
+        {
+            issuer = options.Issuer,
+            authorization_endpoint = $"{options.Issuer}/api/oidc/authorization",
+            token_endpoint = $"{options.Issuer}/api/oidc/token",
+            jwks_uri = $"{options.Issuer}/jwks.json",
+            introspection_endpoint = $"{options.Issuer}/api/oidc/introspection",
+            response_types_supported = new[] { "code" },
+            grant_types_supported = new[] { "authorization_code", "refresh_token" },
+            code_challenge_methods_supported = new[] { "S256" },
+            scopes_supported = new[] { "openid", "profile", "email" }
+        });
+    });
 
     app.MapMcp("/mcp");
 
@@ -192,6 +248,29 @@ void ConfigureServices(IServiceCollection services, IConfiguration configuration
         options.MaxInlineDownloadBytes = Environment.GetEnvironmentVariable("MAX_INLINE_DOWNLOAD_BYTES") is string maxInlineStr && long.TryParse(maxInlineStr, out var maxInline)
             ? maxInline
             : configuration.GetValue<long?>("Immich:MaxInlineDownloadBytes") ?? 25 * 1024 * 1024;
+    });
+
+    services.Configure<OidcOptions>(options =>
+    {
+        options.IntrospectionUrl = Environment.GetEnvironmentVariable("OIDC_INTROSPECTION_URL")
+                                    ?? configuration.GetValue<string>("Oidc:IntrospectionUrl") ?? string.Empty;
+
+        options.ClientId = Environment.GetEnvironmentVariable("OIDC_CLIENT_ID")
+                            ?? configuration.GetValue<string>("Oidc:ClientId") ?? string.Empty;
+
+        options.ClientSecret = Environment.GetEnvironmentVariable("OIDC_CLIENT_SECRET")
+                                ?? configuration.GetValue<string>("Oidc:ClientSecret") ?? string.Empty;
+
+        options.Issuer = Environment.GetEnvironmentVariable("OAUTH_ISSUER")
+                          ?? configuration.GetValue<string>("Oidc:Issuer") ?? string.Empty;
+
+        options.PublicUrl = Environment.GetEnvironmentVariable("MCP_PUBLIC_URL")
+                             ?? configuration.GetValue<string>("Mcp:PublicUrl") ?? string.Empty;
+    });
+
+    services.AddHttpClient<AutheliaIntrospectionClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(5);
     });
 
     // Configure retry policy for transient errors

@@ -15,6 +15,10 @@ services:
       MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-Information}
       DOWNLOAD_MODE: ${DOWNLOAD_MODE:-url}
       MAX_PAGE_SIZE: ${MAX_PAGE_SIZE:-100}
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-}
+      OIDC_INTROSPECTION_URL: ${OIDC_INTROSPECTION_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

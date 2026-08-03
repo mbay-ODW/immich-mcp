@@ -117,8 +117,19 @@ docker run -e IMMICH_BASE_URL="https://photos.example.com" \
 | `MAX_PAGE_SIZE` | No | `100` | Maximum items per page |
 | `MCP_PORT` | No | `5000` | HTTP server port |
 | `IMMICH_TOOL_MODE` | No | `static` | `static` exposes all tools; `gateway` exposes `immich_tools_list` and `immich_tools_enable` first |
+| `MCP_PUBLIC_URL` | No | - | This server's own public URL; used for upload callback links and the OAuth discovery document |
+| `OAUTH_ISSUER` | No | - | Base URL of your Authelia (or other OIDC provider) instance, e.g. `https://authelia.example.com` |
+| `OIDC_INTROSPECTION_URL` | No | - | RFC 7662 token introspection endpoint, e.g. `https://authelia.example.com/api/oidc/introspection` |
+| `OIDC_CLIENT_ID` | No | - | OIDC client ID registered with your provider for this server |
+| `OIDC_CLIENT_SECRET` | No | - | OIDC client secret, used as Basic auth against the introspection endpoint |
 
 In `gateway` mode, `immich_tools_enable` emits the MCP `notifications/tools/list_changed` notification so clients can refresh the normal `tools/list` inventory after enabling a category or tool.
+
+## Authentication (fork addition)
+
+This fork adds an OAuth2 bearer-token gate on top of upstream `barryw/ImmichMCP`, which ships with **no authentication** on its HTTP endpoint. When `OAUTH_ISSUER`, `OIDC_INTROSPECTION_URL`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set, every request to `/mcp` and `/upload/*` must carry `Authorization: Bearer <token>`, validated via RFC 7662 introspection against the configured provider. `/health` and `/.well-known/oauth-protected-resource` / `/.well-known/oauth-authorization-server` (RFC 9728 / RFC 8414 discovery documents) stay public so OAuth-capable clients like Claude/Cowork can bootstrap the authorization flow.
+
+Leave all four variables unset to run without auth (e.g. local `--stdio` use, or a trusted private network).
 
 ## Claude Desktop Configuration
 
