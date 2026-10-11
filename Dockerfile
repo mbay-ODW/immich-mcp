@@ -12,6 +12,8 @@ RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Docker-Secrets: NAME_FILE=/run/secrets/... wird beim Start zu NAME geladen
+COPY --chmod=0755 env-secrets.sh /usr/local/bin/env-secrets
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
@@ -28,4 +30,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 5000
 
-ENTRYPOINT ["dotnet", "ImmichMCP.dll"]
+ENTRYPOINT ["/usr/local/bin/env-secrets", "dotnet", "ImmichMCP.dll"]
