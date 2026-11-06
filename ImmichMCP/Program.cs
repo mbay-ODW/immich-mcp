@@ -42,7 +42,10 @@ else
 
     builder.Services
         .AddMcpServer(options => ConfigureMcpCapabilities(options, builder.Configuration))
-        .WithHttpTransport()
+        // static hat keinen Sitzungszustand und laeuft zustandslos (bedient 2026-07-28 und aeltere Clients).
+        // gateway merkt sich freigeschaltete Tools je Mcp-Session-Id und braucht deshalb Sitzungen; das SDK
+        // beantwortet damit nur noch den initialize-Handshake bis 2025-11-25 und lehnt 2026-07-28 ab.
+        .WithHttpTransport(options => options.Stateless = !UseToolGateway(builder.Configuration))
         .ConfigureTools(UseToolGateway(builder.Configuration));
 
     var app = builder.Build();
